@@ -10,7 +10,8 @@ kotlin {
     // 从第一行代码开始就开着，比事后补便宜得多。
     explicitApi()
 
-    androidLibrary {
+    // AGP 9.3 起这个块从 androidLibrary 改名为 android（旧名仍可用但已弃用，会警告）
+    android {
         namespace = "com.tlogger"
         compileSdk = 37
         minSdk = 24
