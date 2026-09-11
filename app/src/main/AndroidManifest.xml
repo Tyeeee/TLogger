@@ -23,6 +23,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 多进程测试用：跑在单独的 :remote 进程里 -->
+        <activity
+            android:name=".RemoteActivity"
+            android:exported="false"
+            android:process=":remote" />
     </application>
 
 </manifest>
