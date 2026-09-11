@@ -1,0 +1,20 @@
+*.iml
+.gradle
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# 构建产物（含子模块）与本地会话文件
+**/build/
+.kotlin
+
+# 本工作区自带的 Gradle 家目录（沙箱环境里构建用，可随时删除）
+.gradle-home
+
+# 第三方库源码分析副本（横向对比用，可随时删除）
+.analysis
