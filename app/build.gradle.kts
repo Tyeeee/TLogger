@@ -30,6 +30,7 @@ android {
 }
 
 dependencies {
-    // 示例应用只依赖库本体，不引任何别的日志框架
-    implementation(project(":TLogger"))
+    // 示例应用依赖两个模块：核心（接口/逻辑）+ 安卓输出
+    implementation(project(":tlogger-core"))
+    implementation(project(":tlogger-android"))
 }

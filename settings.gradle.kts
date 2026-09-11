@@ -28,5 +28,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "TLoggerDemo"
 include(":app")
-include(":TLogger")
+include(":tlogger-core")
+include(":tlogger-android")
  

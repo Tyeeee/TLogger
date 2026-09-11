@@ -73,7 +73,8 @@ adb logcat -s TLoggerSample                                                # 看
 
 ```
 // settings.gradle.kts
-include(":TLogger")
+include(":tlogger-core")
+include(":tlogger-android")
 ```
 
 ```
@@ -119,20 +120,35 @@ val log = logging.logger("Net")
 
 ## 模块
 
-| 模块 | 说明 |
+| 模块 | 说明 | 里面有什么 |
+|---|---|---|
+| `tlogger-core` | 核心：**跟平台无关**的接口与逻辑 | 日志器、级别、标签配方、记录与出口契约、便捷门面 |
+| `tlogger-android` | 安卓输出：**只有安卓能用**的部分 | 输出到系统日志（含长日志分段）、进程名读取、一行安装 |
+| `app` | 示例应用 | 14 个可点的测试场景 |
+
+**依赖方向是单向的**：`tlogger-android` → `tlogger-core`。反过来核心模块**不认识**安卓。
+
+核心模块里不许出现任何安卓专有的东西（`Context`、`android.util.Log`）——这条不是洁癖，是为了以后加苹果端时这一层能原样复用。出口（往哪写）由各自的模块提供，核心只定义"日志长什么样""往哪送"。
+
+后面的模块按需再建，**有实际代码要发的时候才建**，不预建空模块：
+
+| 打算建的模块 | 用途 |
 |---|---|
-| `TLogger/` | 库本体（跨平台结构） |
-| `app/` | 示例应用 |
+| `tlogger-redact` | 敏感信息打码（要能单独被人拿走用） |
+| `tlogger-lint` | 写代码时的隐私检查（不进安装包） |
+| `tlogger-bridge-*` | 接到 Timber / SLF4J / Kermit 等已有日志库上的对接件 |
+| `tlogger-engine-*` | 落盘（第二版） |
 
 ## 构建
 
 ```
-./gradlew :TLogger:build
+./gradlew :tlogger-core:build :tlogger-android:build   # 编译两个模块并跑测试
+./gradlew :app:installDebug                            # 装示例应用到设备
 ```
 
-源码组织：共用代码在 `TLogger/src/commonMain/`，安卓专有实现在 `TLogger/src/androidMain/`。
+源码组织（跨平台库的固定规则，不是随便起的名字）：所有平台共用的代码在 `src/commonMain/`，只有安卓能用的代码在 `src/androidMain/`，测试在 `src/commonTest/` 和 `src/androidHostTest/`。
 
-**iOS 目标暂时没有开启**：本机未安装 Xcode，苹果产物编不出来。装上之后在 `TLogger/build.gradle.kts` 里补三行即可（文件里有说明）。
+**iOS 目标暂时没有开启**：本机未安装 Xcode，苹果产物编不出来。装上之后在 `tlogger-core/build.gradle.kts` 里补三行即可（文件里有说明）。
 
 ## 支持的版本
 
