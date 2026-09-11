@@ -199,7 +199,7 @@ class LoggingTest {
         assertEquals(boom, record.throwable)
     }
 
-    // ---------- 未安装 / 多实例（对应约束 13、19）----------
+    // ---------- 未安装 / 多实例 ----------
 
     @Test
     fun loggingWithoutAnyInstallationDoesNotCrash() {

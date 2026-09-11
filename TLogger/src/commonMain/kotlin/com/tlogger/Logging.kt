@@ -40,7 +40,7 @@ public class LoggingConfig private constructor(
         /**
          * 加一个出口。可以加多个，每条日志会依次送给全部出口。
          *
-         * 一个出口都不加时，日志会被丢弃——**这是有意的**：没配置就不采集（约束 10）。
+         * 一个出口都不加时，日志会被丢弃——**这是有意的**：没配置就不采集。
          */
         public fun sink(sink: LogSink): Builder = apply { sinks.add(sink) }
 
@@ -90,7 +90,7 @@ public class LoggingConfig private constructor(
 }
 
 /**
- * 运行期的统计。用来回答"它到底在干什么"，也是约束 19「错误必须可感知」的落点。
+ * 运行期的统计。用来回答"它到底在干什么"，也是「错误必须可感知」这条原则的落点。
  *
  * 注意：这里的计数是**尽力而为**的（没有加锁），用于观察趋势足够，不要拿去做严格的账。
  */
@@ -151,7 +151,7 @@ public class Logging(public val config: LoggingConfig) {
             throwable = throwable,
         )
 
-        // 出口自己不许把异常抛出来影响业务线程（约束 19）。这里再兜一层。
+        // 出口自己不许把异常抛出来影响业务线程。这里再兜一层。
         for (sink in config.sinks) {
             try {
                 sink.write(record)

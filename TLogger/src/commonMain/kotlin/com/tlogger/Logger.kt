@@ -36,7 +36,7 @@ public class Logger internal constructor(
         explicitTag: String? = null,
         message: () -> String,
     ): Unit {
-        // 没安装任何日志系统时安全降级：什么都不做，绝不崩（约束 19）。
+        // 没安装任何日志系统时安全降级：什么都不做，绝不崩。
         val logging = host() ?: return
         // 先判级别再求值——顺序反了惰性求值就白做了。
         if (!logging.isEnabled(level, source)) return
