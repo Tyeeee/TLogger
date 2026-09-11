@@ -174,6 +174,15 @@ TLogger.install(
 Log.i("Crash", ring.dump())
 ```
 
+**⚠️ 一个必须注意的顺序**：环形缓冲拿到的是**打码之前**的记录。如果你直接把 `ring` 挂上去，
+缓冲区里存的就是手机号原文，dump 出来等于**绕过打码把隐私漏出去了**（这个坑是场景测试抓出来的）。
+正确写法是**把缓冲套在打码里面**：
+
+```
+.sink(RedactingSink(ring, PiiRedactor()))   // 缓冲里存的也是打码后的内容
+.sink(ContextSink(RedactingSink(AndroidLogSink(), PiiRedactor()), session = ...))
+```
+
 `dump()` 出来是这样：
 
 ```

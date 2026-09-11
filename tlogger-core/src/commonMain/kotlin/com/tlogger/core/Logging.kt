@@ -123,16 +123,17 @@ public class LoggingStats(
  * **它不是全局单例**：你可以直接 `Logging(config)` 建多个互不干扰的实例（测试里尤其有用）。
  * `TLogger` 那个门面只是"查找当前安装的那一个"的便捷入口。
  *
- * 线程安全说明：第一片实现没有加锁，[stats] 的计数可能少算；正式用它之前要补上（记录在案）。
+ * 线程安全说明：[stats] 的计数用原子计数器，多线程下不会少算。
  */
 public class Logging(public val config: LoggingConfig) {
 
-    private var tagTruncationCount: Int = 0
-    private var writtenCount: Int = 0
+    // 用计数器而不是普通变量：多个线程同时写日志时，普通变量会少算（实测抓到过）
+    private val tagTruncationCount = Counter()
+    private val writtenCount = Counter()
 
     /** 取当前统计。 */
     public val stats: LoggingStats
-        get() = LoggingStats(tagTruncationCount, writtenCount)
+        get() = LoggingStats(tagTruncationCount.value(), writtenCount.value())
 
     /** 为某个来源要一个日志器。同一个来源重复调用会得到等价的新对象，不共享状态。 */
     public fun logger(source: String): Logger {
@@ -160,7 +161,7 @@ public class Logging(public val config: LoggingConfig) {
         var tag = sanitizeTag(config.tagRecipe.tagOf(shownSource, explicitTag))
         if (tag.length > config.maxTagLength) {
             tag = tag.substring(0, config.maxTagLength)
-            tagTruncationCount++
+            tagTruncationCount.increment()
         }
 
         val record = LogRecord(
@@ -180,7 +181,7 @@ public class Logging(public val config: LoggingConfig) {
                 // 出口失败不该打断业务，也不该打断后面的出口。
             }
         }
-        writtenCount++
+        writtenCount.increment()
     }
 }
 

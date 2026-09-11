@@ -114,6 +114,7 @@ object Scenarios {
         "traceFlow" to "17. 链路：一次下单跨四个模块，能串起来",
         "traceCoroutine" to "18. 链路：很多请求同时跑，各带各的链路号",
         "ringCrash" to "19. 环形缓冲：出事前发生了什么",
+        "endToEnd" to "20. 端到端：打码 + 链路 + 缓冲 + 按模块级别一起上",
     )
 
     fun run(id: String, emit: Emit) {
@@ -137,6 +138,7 @@ object Scenarios {
             "traceFlow" -> traceFlow(emit)
             "traceCoroutine" -> traceCoroutine(emit)
             "ringCrash" -> ringCrash(emit)
+            "endToEnd" -> endToEnd(emit)
             else -> emit("RESULT=unknown 未知场景: $id")
         }
     }
@@ -151,6 +153,43 @@ object Scenarios {
             putExtra("source", source)
         }
         ctx.startActivity(intent)
+    }
+
+    // ---------------------------------------------------------------- 20
+
+    private fun endToEnd(emit: Emit) {
+        val ring = RingBufferSink(capacity = 20)
+        val ctx = Scenarios.contextOrNull()
+        val logging = TLogger.install(
+            LoggingConfig.builder()
+                // 【重点】缓冲要套在打码**里面**：否则缓冲区里存的是手机号原文，
+                // dump 出来就等于绕过打码把隐私漏出去了（这个坑是场景测试抓出来的）
+                .sink(RedactingSink(ring, PiiRedactor()))
+                .sink(
+                    ContextSink(
+                        RedactingSink(AndroidLogSink(), PiiRedactor()),
+                        session = SessionInfo.new(appVersion = "0.1"),
+                    ),
+                )
+                .defaultLevel(LogLevel.DEBUG)
+                .sourceLevel("Pay", LogLevel.WARN)   // 支付模块自己声明：只记 WARN 以上
+                .sourceSuffix(if (ctx != null) AndroidProcessTags.suffixFor(ctx) else "")
+                .build(),
+        )
+
+        emit("四个东西一起上：打码 + 链路 + 缓冲 + 按模块级别")
+        withTrace("e2e1") {
+            TLogger.logger(SCREEN).i { "用户 13812345678 点了结算" }
+            TLogger.logger(ORDER).i { "创建订单，收货人 13812345678" }
+            TLogger.logger("Pay").d { "这条 DEBUG 应该被挡住（支付模块声明的级别）" }
+            TLogger.logger("Pay").w { "支付超时，准备重试" }
+            TLogger.logger(STOCK).e(RuntimeException("库存服务 500")) { "扣减库存失败" }
+        }
+
+        emit("对照上面：手机号应该成了 138****5678，每条前面有 [t=e2e1 …]，支付那条 DEBUG 不该出现")
+        emit("现在把缓冲区里的现场捞出来——它是套在打码里面的，所以手机号也是打过的：")
+        ring.dump().split("\n").forEach { emit("    $it") }
+        emit("RESULT=ok ring=${ring.size} written=${logging.stats.writtenCount}")
     }
 
     // ---------------------------------------------------------------- 19
