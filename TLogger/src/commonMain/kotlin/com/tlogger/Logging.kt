@@ -22,6 +22,7 @@ public class LoggingConfig private constructor(
     internal val sourceLevels: Map<String, LogLevel>,
     internal val overrideLevel: LogLevel?,
     internal val maxTagLength: Int,
+    internal val sourceSuffix: String,
 ) {
 
     /** 按上面的优先级算出某个来源此刻实际生效的门槛。 */
@@ -36,6 +37,7 @@ public class LoggingConfig private constructor(
         private var sourceLevels: MutableMap<String, LogLevel> = mutableMapOf()
         private var overrideLevel: LogLevel? = null
         private var maxTagLength: Int = DEFAULT_MAX_TAG_LENGTH
+        private var sourceSuffix: String = ""
 
         /**
          * 加一个出口。可以加多个，每条日志会依次送给全部出口。
@@ -69,6 +71,20 @@ public class LoggingConfig private constructor(
             this.maxTagLength = length
         }
 
+        /**
+         * 给**所有**来源名自动加一个后缀，用来区分进程。
+         *
+         * 为什么需要它：多进程应用里，同一个模块在不同进程里往往用同一个来源名（比如主进程和推送进程
+         * 都叫 `Net`）。实测结果是——这种时候日志里只有一种标签，两个进程的日志完全混在一起，
+         * **只能靠"进程号"那一列认**。
+         *
+         * 安卓上不用自己拼：用 `AndroidLogging.install(context)`，它会自动把副进程的后缀填成
+         * `@进程名`，主进程不加后缀。
+         *
+         * 注意：**声明级别时仍然用原始来源名**（`sourceLevel("Net", ...)`），后缀只影响显示出来的名字。
+         */
+        public fun sourceSuffix(suffix: String): Builder = apply { this.sourceSuffix = suffix }
+
         /** 构造配置。 */
         public fun build(): LoggingConfig = LoggingConfig(
             sinks = sinks.toList(),
@@ -77,6 +93,7 @@ public class LoggingConfig private constructor(
             sourceLevels = sourceLevels.toMap(),
             overrideLevel = overrideLevel,
             maxTagLength = maxTagLength,
+            sourceSuffix = sourceSuffix,
         )
     }
 
@@ -135,9 +152,13 @@ public class Logging(public val config: LoggingConfig) {
         message: String,
         throwable: Throwable?,
     ) {
+        // 级别判定用**原始来源名**（使用者是按原名声明级别的）
         if (!isEnabled(level, source)) return
 
-        var tag = config.tagRecipe.tagOf(source, explicitTag)
+        // 显示和记录用**带后缀的来源名**，这样多进程才分得清谁是谁
+        val shownSource = if (config.sourceSuffix.isEmpty()) source else source + config.sourceSuffix
+
+        var tag = sanitizeTag(config.tagRecipe.tagOf(shownSource, explicitTag))
         if (tag.length > config.maxTagLength) {
             tag = tag.substring(0, config.maxTagLength)
             tagTruncationCount++
@@ -145,7 +166,7 @@ public class Logging(public val config: LoggingConfig) {
 
         val record = LogRecord(
             level = level,
-            source = source,
+            source = shownSource,
             tag = tag,
             message = message,
             throwable = throwable,
@@ -161,4 +182,27 @@ public class Logging(public val config: LoggingConfig) {
         }
         writtenCount++
     }
+}
+
+/**
+ * 把标签里的空白和控制字符换成下划线。
+ *
+ * 原因：实测发现标签里带空格（比如 `Net/带空格 的标签`）虽然能打出来，
+ * 但会把日志窗口的标签列挤歪，看日志很难受。
+ */
+private fun sanitizeTag(tag: String): String {
+    var needsFix = false
+    for (c in tag) {
+        if (c.isWhitespace() || c.isISOControl()) {
+            needsFix = true
+            break
+        }
+    }
+    if (!needsFix) return tag
+
+    val sb = StringBuilder(tag.length)
+    for (c in tag) {
+        sb.append(if (c.isWhitespace() || c.isISOControl()) '_' else c)
+    }
+    return sb.toString()
 }

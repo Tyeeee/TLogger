@@ -3,6 +3,7 @@ package com.tlogger.sample
 import android.content.Context
 import android.content.Intent
 import com.tlogger.AndroidLogSink
+import com.tlogger.AndroidLogging
 import com.tlogger.LogLevel
 import com.tlogger.Logging
 import com.tlogger.LoggingConfig
@@ -18,14 +19,20 @@ private const val ORDER = "Order"
 private const val PAY = "Pay"
 private const val STOCK = "Stock"
 
-/** 一次装好，返回实例，方便看统计。 */
-private fun install(defaultLevel: LogLevel = LogLevel.DEBUG): Logging =
-    TLogger.install(
-        LoggingConfig.builder()
-            .sink(AndroidLogSink())
-            .defaultLevel(defaultLevel)
-            .build(),
-    )
+/** 一次装好，返回实例，方便看统计。有 context 时走"一行安装"，自动带上进程后缀。 */
+private fun install(defaultLevel: LogLevel = LogLevel.DEBUG): Logging {
+    val ctx = Scenarios.contextOrNull()
+    return if (ctx != null) {
+        AndroidLogging.install(ctx, defaultLevel)
+    } else {
+        TLogger.install(
+            LoggingConfig.builder()
+                .sink(AndroidLogSink())
+                .defaultLevel(defaultLevel)
+                .build(),
+        )
+    }
+}
 
 /**
  * 十个"测试节点"。每个都模拟一种真实用法，进去就自动跑一遍。
@@ -40,6 +47,9 @@ object Scenarios {
     fun attach(ctx: Context) {
         context = ctx
     }
+
+    /** 给上面的 install 用。 */
+    fun contextOrNull(): Context? = context
 
     /** 所有场景的编号和标题，界面按这个顺序生成按钮。 */
     val all: List<Pair<String, String>> = listOf(

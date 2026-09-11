@@ -9,10 +9,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.tlogger.AndroidLogSink
-import com.tlogger.LogLevel
-import com.tlogger.LoggingConfig
-import com.tlogger.TLogger
+import com.tlogger.AndroidLogging
 
 /**
  * 示例应用：每个按钮是一个"测试节点"，进去就自动跑一遍并把结果写出来。
@@ -41,12 +38,8 @@ class MainActivity : Activity() {
     }
 
     private fun installDefault() {
-        TLogger.install(
-            LoggingConfig.builder()
-                .sink(AndroidLogSink())
-                .defaultLevel(LogLevel.DEBUG)
-                .build(),
-        )
+        // 一行安装：自动带上进程后缀，副进程的来源名会变成 Net@remote 这种
+        AndroidLogging.install(this)
     }
 
     private fun buildUi(): ScrollView {

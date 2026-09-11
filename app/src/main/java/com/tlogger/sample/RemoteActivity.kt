@@ -5,9 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.tlogger.AndroidLogSink
-import com.tlogger.LogLevel
-import com.tlogger.LoggingConfig
+import com.tlogger.AndroidLogging
 import com.tlogger.TLogger
 
 /**
@@ -32,12 +30,8 @@ class RemoteActivity : Activity() {
         Log.i(TAG, "REMOTE_BEGIN install=$doInstall count=$count source=$source pid=$pid")
 
         if (doInstall) {
-            TLogger.install(
-                LoggingConfig.builder()
-                    .sink(AndroidLogSink())
-                    .defaultLevel(LogLevel.DEBUG)
-                    .build(),
-            )
+            // 副进程同样一行装好；来源名会自动带上 @进程名 后缀
+            AndroidLogging.install(this)
         }
 
         val log = TLogger.logger(source)
