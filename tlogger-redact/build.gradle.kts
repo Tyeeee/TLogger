@@ -39,7 +39,7 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                api(project(":com.tlogger.core"))
+                api(project(":tlogger-core"))
             }
         }
         commonTest {

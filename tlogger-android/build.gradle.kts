@@ -36,7 +36,7 @@ kotlin {
         androidMain {
             dependencies {
                 // 用 api 而不是 implementation：别人依赖本模块时也应该能看到核心的接口
-                api(project(":com.tlogger.core"))
+                api(project(":tlogger-core"))
             }
         }
         // 宿主测试的源集由 withHostTestBuilder 建出来，DSL 里没有现成的名字，用 getByName 拿

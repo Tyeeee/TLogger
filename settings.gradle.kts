@@ -28,8 +28,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "TLoggerDemo"
 include(":app")
-include(":com.tlogger.core")
-include(":com.tlogger.android")
-include(":com.tlogger.redact")
-include(":com.tlogger.lint")
+include(":tlogger-core")
+include(":tlogger-android")
+include(":tlogger-redact")
+include(":tlogger-lint")
  
