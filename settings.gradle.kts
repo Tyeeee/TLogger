@@ -30,4 +30,5 @@ rootProject.name = "TLoggerDemo"
 include(":app")
 include(":tlogger-core")
 include(":tlogger-android")
+include(":tlogger-redact")
  

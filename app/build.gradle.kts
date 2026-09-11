@@ -30,7 +30,8 @@ android {
 }
 
 dependencies {
-    // 示例应用依赖两个模块：核心（接口/逻辑）+ 安卓输出
+    // 示例应用依赖三个模块：核心（接口/逻辑）+ 安卓输出 + 打码
     implementation(project(":tlogger-core"))
     implementation(project(":tlogger-android"))
+    implementation(project(":tlogger-redact"))
 }

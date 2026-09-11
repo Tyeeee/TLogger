@@ -4,11 +4,18 @@ import android.content.Context
 import android.content.Intent
 import com.tlogger.AndroidLogSink
 import com.tlogger.AndroidLogging
+import com.tlogger.AndroidProcessTags
 import com.tlogger.LogLevel
 import com.tlogger.Logging
 import com.tlogger.LoggingConfig
 import com.tlogger.TLogger
 import com.tlogger.TagRecipes
+import com.tlogger.redact.PiiRedactor
+import com.tlogger.redact.PiiRules
+import com.tlogger.redact.RedactingSink
+import com.tlogger.redact.RedactionStyle
+import com.tlogger.redact.Redactor
+import com.tlogger.redact.TokenGenerators
 
 /** 页面上的一句话输出（同时会进日志，方便我事后核对）。 */
 typealias Emit = (String) -> Unit
@@ -32,6 +39,18 @@ private fun install(defaultLevel: LogLevel = LogLevel.DEBUG): Logging {
                 .build(),
         )
     }
+}
+
+/** 装好出口，并在出口外面**套一层打码**——这就是打码模块的用法。 */
+private fun installWithRedaction(redactor: Redactor): Logging {
+    val ctx = Scenarios.contextOrNull()
+    return TLogger.install(
+        LoggingConfig.builder()
+            .sink(RedactingSink(AndroidLogSink(), redactor))
+            .defaultLevel(LogLevel.DEBUG)
+            .sourceSuffix(if (ctx != null) AndroidProcessTags.suffixFor(ctx) else "")
+            .build(),
+    )
 }
 
 /**
@@ -67,6 +86,8 @@ object Scenarios {
         "processNoInstall" to "12. 多进程：副进程忘了装日志系统",
         "processSameSource" to "13. 多进程：两个进程用同一个来源名",
         "threads" to "14. 多线程同时打日志",
+        "redactBasic" to "15. 打码：带手机号身份证的日志长什么样",
+        "redactToken" to "16. 打码：同一个手机号换成同一个代号",
     )
 
     fun run(id: String, emit: Emit) {
@@ -85,6 +106,8 @@ object Scenarios {
             "processNoInstall" -> processNoInstall(emit)
             "processSameSource" -> processSameSource(emit)
             "threads" -> threads(emit)
+            "redactBasic" -> redactBasic(emit)
+            "redactToken" -> redactToken(emit)
             else -> emit("RESULT=unknown 未知场景: $id")
         }
     }
@@ -101,7 +124,44 @@ object Scenarios {
         ctx.startActivity(intent)
     }
 
-    // ---------------------------------------------------------------- 14
+    // ---------------------------------------------------------------- 15
+
+    private fun redactBasic(emit: Emit) {
+        val pii = PiiRedactor()
+        installWithRedaction(pii)
+        val log = TLogger.logger("User")
+
+        emit("下面 6 条日志里都带着敏感信息，看日志里剩下什么")
+        log.i { "手机号 13812345678 已注册" }
+        log.i { "邮箱 zhangsan@example.com 验证通过" }
+        log.i { "身份证 110101199003071234 核验成功" }
+        log.i { "银行卡 4111111111111111 已绑定" }
+        log.i { "登录来自 192.168.100.200" }
+        log.i { "凭证 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghij 已过期" }
+
+        emit("对照上面 6 条，号码应该都被换掉了")
+        emit("打码统计：${pii.stats}")
+        emit("RESULT=ok hits=${pii.stats.total}")
+    }
+
+    // ---------------------------------------------------------------- 16
+
+    private fun redactToken(emit: Emit) {
+        val pii = PiiRedactor(
+            rules = listOf(PiiRules.phone(RedactionStyle.TOKEN)),
+            tokenGenerator = TokenGenerators.simple,
+        )
+        installWithRedaction(pii)
+        val log = TLogger.logger("User")
+
+        emit("这次把手机号换成代号：同一个号码每次该是同一个代号，这样排障时能对上号")
+        log.i { "用户 13812345678 登录" }
+        log.i { "用户 13812345678 下单" }
+        log.i { "用户 13900000000 登录" }
+
+        emit("前两条应该是同一个代号，第三条是另一个代号")
+        emit("RESULT=ok hits=${pii.stats.total}")
+    }
 
     private fun processSameSource(emit: Emit) {
         val logging = install()
