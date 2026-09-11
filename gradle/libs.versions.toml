@@ -10,6 +10,8 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 # 安卓代码检查工具的版本必须与 AGP 对齐：AGP x.y.z ↔ lint (x+23).y.z
 lint = "32.3.0"
+# 协程：用来让上下文（链路号）自动跨协程、跨线程传递
+kotlinxCoroutines = "1.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,6 +30,8 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 lint-tests = { group = "com.android.tools.lint", name = "lint-tests", version.ref = "lint" }
 
 [plugins]

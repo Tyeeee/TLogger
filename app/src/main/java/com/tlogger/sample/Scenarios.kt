@@ -15,7 +15,17 @@ import com.tlogger.redact.PiiRules
 import com.tlogger.redact.RedactingSink
 import com.tlogger.redact.RedactionStyle
 import com.tlogger.redact.Redactor
+import com.tlogger.context.ContextSink
+import com.tlogger.context.LogContext
+import com.tlogger.context.LogContextElement
+import com.tlogger.context.SessionInfo
+import com.tlogger.context.withPage
+import com.tlogger.context.withTrace
 import com.tlogger.redact.TokenGenerators
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 /** 页面上的一句话输出（同时会进日志，方便我事后核对）。 */
 typealias Emit = (String) -> Unit
@@ -39,6 +49,18 @@ private fun install(defaultLevel: LogLevel = LogLevel.DEBUG): Logging {
                 .build(),
         )
     }
+}
+
+/** 装好出口，并在外面套一层"上下文"——链路号、会话号、版本会拼在正文前面。 */
+private fun installWithContext(): Logging {
+    val ctx = Scenarios.contextOrNull()
+    return TLogger.install(
+        LoggingConfig.builder()
+            .sink(ContextSink(AndroidLogSink(), session = SessionInfo.new(appVersion = "0.1")))
+            .defaultLevel(LogLevel.DEBUG)
+            .sourceSuffix(if (ctx != null) AndroidProcessTags.suffixFor(ctx) else "")
+            .build(),
+    )
 }
 
 /** 装好出口，并在出口外面**套一层打码**——这就是打码模块的用法。 */
@@ -88,6 +110,8 @@ object Scenarios {
         "threads" to "14. 多线程同时打日志",
         "redactBasic" to "15. 打码：带手机号身份证的日志长什么样",
         "redactToken" to "16. 打码：同一个手机号换成同一个代号",
+        "traceFlow" to "17. 链路：一次下单跨四个模块，能串起来",
+        "traceCoroutine" to "18. 链路：很多请求同时跑，各带各的链路号",
     )
 
     fun run(id: String, emit: Emit) {
@@ -108,6 +132,8 @@ object Scenarios {
             "threads" -> threads(emit)
             "redactBasic" -> redactBasic(emit)
             "redactToken" -> redactToken(emit)
+            "traceFlow" -> traceFlow(emit)
+            "traceCoroutine" -> traceCoroutine(emit)
             else -> emit("RESULT=unknown 未知场景: $id")
         }
     }
@@ -122,6 +148,54 @@ object Scenarios {
             putExtra("source", source)
         }
         ctx.startActivity(intent)
+    }
+
+    // ---------------------------------------------------------------- 17
+
+    private fun traceFlow(emit: Emit) {
+        installWithContext()
+        emit("模拟一次下单：四个模块各打几条，中间还嵌了个页面")
+        emit("它们在代码里互不相识，谁都不用传参数——靠的是入口标记的那一次")
+
+        withTrace("a3f9") {
+            TLogger.logger(SCREEN).i { "用户点了「立即购买」" }
+            TLogger.logger(ORDER).i { "创建订单 20260911001" }
+            TLogger.logger(STOCK).d { "检查库存：剩 3 件" }
+            TLogger.logger(PAY).i { "发起支付 199.00" }
+            withPage("订单页") {
+                TLogger.logger(SCREEN).d { "页面渲染完成" }
+            }
+            TLogger.logger(ORDER).i { "订单完成" }
+        }
+        TLogger.logger(ORDER).i { "这条在链路外面，不该带 t=" }
+
+        emit("上面 6 条应该都带 [t=a3f9]，最后一条不带")
+        emit("在日志窗口里搜 t=a3f9，就能把这一次下单的全过程拉出来")
+        emit("RESULT=ok")
+    }
+
+    // ---------------------------------------------------------------- 18
+
+    private fun traceCoroutine(emit: Emit) {
+        installWithContext()
+        emit("同时开 3 条协程，各自带自己的链路号，中间还要换线程")
+        emit("重点看：出去换了线程回来，链路号有没有丢、有没有串")
+
+        runBlocking {
+            val jobs = listOf("a111", "b222", "c333").map { id ->
+                launch(LogContextElement(LogContext(traceId = id))) {
+                    TLogger.logger(NET).i { "$id 第 1 条（原线程）" }
+                    withContext(Dispatchers.Default) {
+                        TLogger.logger(NET).i { "$id 第 2 条（换了线程）" }
+                    }
+                    TLogger.logger(NET).i { "$id 第 3 条（又回来了）" }
+                }
+            }
+            jobs.forEach { it.join() }
+        }
+
+        emit("同一条链路的 3 条日志应该都带同一个 t=，不同链路之间不能串")
+        emit("RESULT=ok")
     }
 
     // ---------------------------------------------------------------- 15
