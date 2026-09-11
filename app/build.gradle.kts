@@ -31,7 +31,10 @@ android {
 
 dependencies {
     // 示例应用依赖三个模块：核心（接口/逻辑）+ 安卓输出 + 打码
-    implementation(project(":tlogger-core"))
-    implementation(project(":tlogger-android"))
-    implementation(project(":tlogger-redact"))
+    implementation(project(":com.tlogger.core"))
+    implementation(project(":com.tlogger.android"))
+    implementation(project(":com.tlogger.redact"))
+
+    // 编译期隐私检查：只在构建期跑，不进安装包（跟 TRouter 的接法一致）
+    lintChecks(project(":com.tlogger.lint"))
 }

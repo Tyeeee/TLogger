@@ -5,8 +5,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.tlogger.AndroidLogging
-import com.tlogger.TLogger
+import com.tlogger.android.AndroidLogging
+import com.tlogger.core.TLogger
 
 /**
  * 跑在**另一个进程**里的页面（清单里声明了 android:process=":remote"）。

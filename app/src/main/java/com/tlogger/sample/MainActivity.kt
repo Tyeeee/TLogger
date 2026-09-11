@@ -9,7 +9,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.tlogger.AndroidLogging
+import com.tlogger.android.AndroidLogging
 
 /**
  * 示例应用：每个按钮是一个"测试节点"，进去就自动跑一遍并把结果写出来。

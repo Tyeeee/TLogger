@@ -36,7 +36,7 @@ TLogger 想做的是**从"开发时在日志窗口里看"到"线上回捞查案"
 | 多实例互不干扰、未初始化不崩 | ✅ |
 | **敏感信息打码**（手机号 / 身份证 / 银行卡 / 邮箱 / IP / 登录凭证） | ✅ |
 | 打码可换成代号（同一个值每次同一个代号，能对上号） | ✅ |
-| 写代码时的隐私检查（不进安装包） | ⏳ 规划中 |
+| **写代码时的隐私检查**（把用户输入写进日志会当场报警） | ✅ |
 | 链路串联 / 会话上下文 | ⏳ 规划中 |
 | 落盘（内存映射）| ⏳ 规划中 |
 
@@ -79,8 +79,10 @@ adb logcat -s TLoggerSample                                                # 看
 
 ```
 // settings.gradle.kts
-include(":tlogger-core")
-include(":tlogger-android")
+include(":com.tlogger.core")
+include(":com.tlogger.android")
+include(":com.tlogger.redact")
+include(":com.tlogger.lint")
 ```
 
 ```
@@ -128,12 +130,15 @@ val log = logging.logger("Net")
 
 | 模块 | 说明 | 里面有什么 |
 |---|---|---|
-| `tlogger-core` | 核心：**跟平台无关**的接口与逻辑 | 日志器、级别、标签配方、记录与出口契约、便捷门面 |
-| `tlogger-android` | 安卓输出：**只有安卓能用**的部分 | 输出到系统日志（含长日志分段）、进程名读取、一行安装 |
-| `tlogger-redact` | **打码**：把敏感信息在写出去之前换掉 | 规则集、换代号、命中统计；套在出口外面用 |
+| `com.tlogger.core` | 核心：**跟平台无关**的接口与逻辑 | 日志器、级别、标签配方、记录与出口契约、便捷门面 |
+| `com.tlogger.android` | 安卓输出：**只有安卓能用**的部分 | 输出到系统日志（含长日志分段）、进程名读取、一行安装 |
+| `com.tlogger.redact` | **打码**：把敏感信息在写出去之前换掉 | 规则集、换代号、命中统计；套在出口外面用 |
+| `com.tlogger.lint` | **写代码时的隐私检查**（不进安装包） | 检查"把用户输入/设备号/位置/账号写进日志" |
 | `app` | 示例应用 | 16 个可点的测试场景 |
 
-**依赖方向是单向的**：`tlogger-android` → `tlogger-core`。反过来核心模块**不认识**安卓。
+**模块名 = 包名 = 命名空间**（跟 TRouter 的 `com.trouter.core`、`com.trouter.lint` 保持一致）。
+
+**依赖方向是单向的**：`com.tlogger.android` → `com.tlogger.core`。反过来核心模块**不认识**安卓。
 
 核心模块里不许出现任何安卓专有的东西（`Context`、`android.util.Log`）——这条不是洁癖，是为了以后加苹果端时这一层能原样复用。出口（往哪写）由各自的模块提供，核心只定义"日志长什么样""往哪送"。
 
@@ -141,20 +146,43 @@ val log = logging.logger("Net")
 
 | 打算建的模块 | 用途 |
 |---|---|
-| `tlogger-lint` | 写代码时的隐私检查（不进安装包） |
-| `tlogger-bridge-*` | 接到 Timber / SLF4J / Kermit 等已有日志库上的对接件 |
-| `tlogger-engine-*` | 落盘（第二版） |
+| `com.tlogger.bridge.*` | 接到 Timber / SLF4J / Kermit 等已有日志库上的对接件 |
+| `com.tlogger.engine.*` | 落盘（第二版） |
+
+## 怎么开启写代码时的隐私检查
+
+它不是运行期的东西，是在**构建期**跑的，所以不进安装包、也不占体积：
+
+```
+// 消费方的 build.gradle.kts
+dependencies {
+    lintChecks(project(":com.tlogger.lint"))
+}
+```
+
+之后把用户输入写进日志就会报警：
+
+```
+val raw = edit.text
+Log.d("Demo", "用户填了 $raw")   // ← 这里会提示
+```
+
+**为什么打码之外还要这个**：打码是运行期换掉日志正文，那时候值已经拼好了。实测数据显示
+**六成以上的泄漏是数据转了几手之后才被写进日志的**，运行期只看到一个字符串，认不出它原来是手机号。
+只有在写代码的时候检查，才能在拼进去之前拦住。
+
+检查是**警告**级别，需要豁免时加 `@Suppress("TLoggerPiiInLog")`。
 
 ## 构建
 
 ```
-./gradlew :tlogger-core:build :tlogger-android:build   # 编译两个模块并跑测试
+./gradlew build                              # 编译全部模块并跑测试
 ./gradlew :app:installDebug                            # 装示例应用到设备
 ```
 
 源码组织（跨平台库的固定规则，不是随便起的名字）：所有平台共用的代码在 `src/commonMain/`，只有安卓能用的代码在 `src/androidMain/`，测试在 `src/commonTest/` 和 `src/androidHostTest/`。
 
-**iOS 目标暂时没有开启**：本机未安装 Xcode，苹果产物编不出来。装上之后在 `tlogger-core/build.gradle.kts` 里补三行即可（文件里有说明）。
+**iOS 目标暂时没有开启**：本机未安装 Xcode，苹果产物编不出来。装上之后在 `com.tlogger.core/build.gradle.kts` 里补三行即可（文件里有说明）。
 
 ## 支持的版本
 

@@ -2,14 +2,14 @@ package com.tlogger.sample
 
 import android.content.Context
 import android.content.Intent
-import com.tlogger.AndroidLogSink
-import com.tlogger.AndroidLogging
-import com.tlogger.AndroidProcessTags
-import com.tlogger.LogLevel
-import com.tlogger.Logging
-import com.tlogger.LoggingConfig
-import com.tlogger.TLogger
-import com.tlogger.TagRecipes
+import com.tlogger.android.AndroidLogSink
+import com.tlogger.android.AndroidLogging
+import com.tlogger.android.AndroidProcessTags
+import com.tlogger.core.LogLevel
+import com.tlogger.core.Logging
+import com.tlogger.core.LoggingConfig
+import com.tlogger.core.TLogger
+import com.tlogger.core.TagRecipes
 import com.tlogger.redact.PiiRedactor
 import com.tlogger.redact.PiiRules
 import com.tlogger.redact.RedactingSink
@@ -471,8 +471,8 @@ object Scenarios {
 }
 
 /** 只用来数数，不输出到 logcat。 */
-private class RecordingForCounters : com.tlogger.LogSink {
-    override fun write(record: com.tlogger.LogRecord): Unit = Unit
+private class RecordingForCounters : com.tlogger.core.LogSink {
+    override fun write(record: com.tlogger.core.LogRecord): Unit = Unit
 }
 
 /**
@@ -481,13 +481,13 @@ private class RecordingForCounters : com.tlogger.LogSink {
  * 用它来分清责任：如果库里交出去的是 7998 字，而日志里只剩下 4000 字，
  * 那截断就是系统干的，不是库干的。
  */
-private class CountingSink : com.tlogger.LogSink {
+private class CountingSink : com.tlogger.core.LogSink {
     var count: Int = 0
         private set
     var maxChars: Int = 0
         private set
 
-    override fun write(record: com.tlogger.LogRecord) {
+    override fun write(record: com.tlogger.core.LogRecord) {
         count++
         if (record.message.length > maxChars) maxChars = record.message.length
     }
