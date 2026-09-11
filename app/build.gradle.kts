@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":tlogger-android"))
     implementation(project(":tlogger-redact"))
     implementation(project(":tlogger-context"))
+    implementation(project(":tlogger-ring"))
 
     // 编译期隐私检查：只在构建期跑，不进安装包（跟 TRouter 的接法一致）
     lintChecks(project(":tlogger-lint"))

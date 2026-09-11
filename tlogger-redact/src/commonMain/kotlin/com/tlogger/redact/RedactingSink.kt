@@ -36,6 +36,7 @@ public class RedactingSink(
                 tag = record.tag,
                 message = redactedMessage,
                 throwable = record.throwable,
+                timestampMillis = record.timestampMillis,
             ),
         )
     }

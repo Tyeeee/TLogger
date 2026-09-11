@@ -169,6 +169,7 @@ public class Logging(public val config: LoggingConfig) {
             tag = tag,
             message = message,
             throwable = throwable,
+            timestampMillis = currentTimeMillis(),
         )
 
         // 出口自己不许把异常抛出来影响业务线程。这里再兜一层。

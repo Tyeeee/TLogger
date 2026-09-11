@@ -43,6 +43,7 @@ public class ContextSink(
                 tag = record.tag,
                 message = "$prefix ${record.message}",
                 throwable = record.throwable,
+                timestampMillis = record.timestampMillis,
             ),
         )
     }

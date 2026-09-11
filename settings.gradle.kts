@@ -32,5 +32,6 @@ include(":tlogger-core")
 include(":tlogger-android")
 include(":tlogger-redact")
 include(":tlogger-context")
+include(":tlogger-ring")
 include(":tlogger-lint")
  

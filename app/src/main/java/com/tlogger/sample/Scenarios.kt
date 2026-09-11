@@ -22,6 +22,7 @@ import com.tlogger.context.SessionInfo
 import com.tlogger.context.withPage
 import com.tlogger.context.withTrace
 import com.tlogger.redact.TokenGenerators
+import com.tlogger.ring.RingBufferSink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -112,6 +113,7 @@ object Scenarios {
         "redactToken" to "16. 打码：同一个手机号换成同一个代号",
         "traceFlow" to "17. 链路：一次下单跨四个模块，能串起来",
         "traceCoroutine" to "18. 链路：很多请求同时跑，各带各的链路号",
+        "ringCrash" to "19. 环形缓冲：出事前发生了什么",
     )
 
     fun run(id: String, emit: Emit) {
@@ -134,6 +136,7 @@ object Scenarios {
             "redactToken" -> redactToken(emit)
             "traceFlow" -> traceFlow(emit)
             "traceCoroutine" -> traceCoroutine(emit)
+            "ringCrash" -> ringCrash(emit)
             else -> emit("RESULT=unknown 未知场景: $id")
         }
     }
@@ -148,6 +151,27 @@ object Scenarios {
             putExtra("source", source)
         }
         ctx.startActivity(intent)
+    }
+
+    // ---------------------------------------------------------------- 19
+
+    private fun ringCrash(emit: Emit) {
+        val ring = RingBufferSink(capacity = 5)
+        TLogger.install(
+            LoggingConfig.builder()
+                .sink(ring)               // 留在内存里
+                .sink(AndroidLogSink())   // 同时也照常输出到日志窗口
+                .defaultLevel(LogLevel.DEBUG)
+                .build(),
+        )
+        val log = TLogger.logger("Order")
+
+        emit("先打 10 条，但缓冲区只留最近 5 条")
+        repeat(10) { i -> log.d { "步骤 $i 完成" } }
+        emit("现在做「出事时该做的动作」——把缓冲区里的东西捞出来：")
+        ring.dump().split("\n").forEach { emit("    $it") }
+        emit("只有最后 5 条，前面的被挤掉了。用户说「刚才闪了一下」时，就是靠这个把现场捞回来")
+        emit("RESULT=ok")
     }
 
     // ---------------------------------------------------------------- 17

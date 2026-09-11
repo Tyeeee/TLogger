@@ -18,6 +18,13 @@ public class LogRecord(
     public val message: String,
     /** 附带的异常，没有就是 `null`。 */
     public val throwable: Throwable?,
+    /**
+     * 这条日志写出来的时刻（毫秒时间戳）。
+     *
+     * **现在只记了墙上时钟**。"精确流逝时间"和"时钟被改动"的标记还没做——那是独立的一块工作，
+     * 之所以现在先加上：环形缓冲要回答"崩溃前发生了什么"，没有时间就基本没法看。
+     */
+    public val timestampMillis: Long = 0L,
 )
 
 /**
