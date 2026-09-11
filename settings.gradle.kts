@@ -7,6 +7,8 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        // 国内网络下 repo.maven.apache.org 会出现「TLS 握手被中断」，加国内镜像优先；mavenCentral 保留兜底
+        maven("https://maven.aliyun.com/repository/public")
         mavenCentral()
         gradlePluginPortal()
     }
@@ -18,6 +20,8 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
+        // 同上：国内镜像优先，官方仓库兜底
+        maven("https://maven.aliyun.com/repository/public")
         mavenCentral()
     }
 }
