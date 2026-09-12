@@ -1,6 +1,7 @@
 plugins {
     id("com.android.lint")
     alias(libs.plugins.kotlin.jvm)
+    `maven-publish`
 }
 
 // 说明：本模块只在构建期使用（写代码时检查），不打包进安装包。
@@ -22,4 +23,13 @@ dependencies {
     testImplementation(libs.lint.api)
     testImplementation(libs.lint.tests)
     testImplementation(libs.junit)
+}
+
+// 纯 JVM 模块不会自动生成发布配置，要自己声明一个（KMP 模块是自动的）
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
+    }
 }

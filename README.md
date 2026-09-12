@@ -100,16 +100,20 @@ adb logcat -s TLoggerSample                                                # 看
 
 ## 快速开始
 
-目前需要以源码模块方式引入（尚未发布坐标）：
+坐标已经打好了，按普通依赖引进来就行。**引的时候写不带 `-android` 的那个名字**，
+Gradle 会自己挑安卓那一份（细节在下面「发给别人用」里说）：
 
 ```
-// settings.gradle.kts
-include(":tlogger-core")
-include(":tlogger-android")
-include(":tlogger-redact")
-include(":tlogger-context")
-include(":tlogger-ring")
-include(":tlogger-lint")
+// app/build.gradle.kts
+dependencies {
+    implementation("io.github.tyeeee:tlogger-core:0.1.0")
+    implementation("io.github.tyeeee:tlogger-android:0.1.0")   // 输出到系统日志窗口
+    implementation("io.github.tyeeee:tlogger-redact:0.1.0")    // 打码（可选）
+    implementation("io.github.tyeeee:tlogger-context:0.1.0")   // 链路、会话号（可选）
+    implementation("io.github.tyeeee:tlogger-ring:0.1.0")      // 出事前的现场（可选）
+
+    lintChecks("io.github.tyeeee:tlogger-lint:0.1.0")          // 写代码时的隐私检查（可选）
+}
 ```
 
 ```
@@ -144,6 +148,80 @@ val logging = Logging(config)
 val log = logging.logger("Net")
 ```
 
+如果某个环境里还没法从仓库拿包，也可以直接把源码模块 `include(":tlogger-core")` 进自己的工程
+（本仓库的示例应用就是这么用的，见 `app/build.gradle.kts`）。
+
+## 发给别人用
+
+### 现在能怎么发
+
+发到本机仓库，同一个电脑上的别的工程立刻就能引：
+
+```
+./gradlew publishToMavenLocal
+```
+
+然后那个工程的 `settings.gradle.kts` 里加上一行 `mavenLocal()` 就能引了。
+
+### 引的时候为什么不用写 `-android`
+
+打包出来的每个模块是**两份**：一份是"说明书"，一份是真正的安卓包。
+
+| 仓库里的名字 | 里面是什么 |
+|---|---|
+| `tlogger-core:0.1.0` | 只有一份元数据，说明"安卓该拿哪份" |
+| `tlogger-core-android:0.1.0` | 真正的 AAR，代码在这里 |
+
+写依赖时只写前一个（`tlogger-core`），Gradle 自己会顺着元数据拿到后面那份，
+而且**不会**把 iOS、桌面那几份的错误版本拉进来。这个机制是 Gradle 原生的，
+将来真加了 iOS 目标，同一个坐标也照样能用，不用改引用方式。
+
+### 别人的项目里到底能不能用，我验证过了
+
+仓库里带了一个 **`consumer-check/`**：那是一个跟 TLogger 源码毫无关系的独立安卓工程，
+依赖里没有一行 `project(":...")`，全是从仓库坐标拉的。它进去就自己跑五项，每项打一行结果：
+
+```
+./gradlew publishToMavenLocal          # 先发到本机
+./gradlew -p consumer-check :app:assembleDebug
+adb install -r consumer-check/app/build/outputs/apk/debug/app-debug.apk
+adb logcat -d -s CONSUMER:I
+```
+
+实测结果（真机跑的）：
+
+| 结果行 | 说明 |
+|---|---|
+| `trace tagged=3 expect=3` | 一次 `withTrace` 标记，正好 3 条日志带上链路号 |
+| `drain leakedRawPii=false masked=true` | 缓冲区里存的是打过码的内容，原号码没漏 |
+| `stress sent=3000 written=3009` | 库自己记账一条不差（3009 = 前面 9 条 + 这 3000 条） |
+
+顺带验了一件事：`lintChecks(...)` 用**仓库坐标**也能吃进来，
+lint 报告里出现了我们自己的检查项 `TLoggerPiiInLog`，并且抓到了故意留的那处违规。
+
+### 发到中央仓库还差什么
+
+代码这边已经就绪：发布配置、POM 信息、**签名**都接好了。
+签名那段不需要再改任何东西——只要本机配置里放了密钥，打包时会自动给每个包生成签名文件；
+没放密钥就整段跳过，平时构建和发本机仓库一点不受影响。
+（这条路径我拿一把假密钥跑过，签名任务确实被触发并执行了，报错就是"密钥读不了"。
+所以缺的只是真密钥，不是配置。）
+
+真正**必须你本人做**的只有两件，我代替不了：
+
+1. **账号和命名空间校验**：注册 Sonatype Central Portal 账号，
+   然后证明 `io.github.tyeeee` 这个命名空间归你（走 GitHub 方式，不用买域名）。
+2. **签名密钥**：生成一对 GPG 密钥，把公钥发到公共服务器。
+
+凭据到手后，把密钥放进本机的 `~/.gradle/gradle.properties`（**不要**写进仓库）：
+
+```
+SIGNING_KEY=<导出的密钥内容，一行>
+SIGNING_PASSWORD=<生成密钥时设的密码>
+```
+
+在那之前，本机仓库和私有仓库（比如公司内网的 Nexus）现在就能用。
+
 ## 设计原则
 
 这四条会一直守，不会为了省事破例：
@@ -164,6 +242,9 @@ val log = logging.logger("Net")
 | `tlogger-ring` | **环形缓冲**：在内存里留住最近 N 条 | 出事时把现场捞出来；满了挤掉最旧的 |
 | `tlogger-lint` | **写代码时的隐私检查**（不进安装包） | 检查"把用户输入/设备号/位置/账号写进日志" |
 | `app` | 示例应用 | 20 个可点的测试场景 |
+
+发出去的名字就是 `io.github.tyeeee:` 加上模块名（例如 `io.github.tyeeee:tlogger-core`）。
+`tlogger-lint` 不进安装包，它走 `lintChecks(...)` 那条路。
 
 **命名规则（一条规则管到底，没有例外）**：
 
