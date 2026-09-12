@@ -300,13 +300,18 @@ Log.d("Demo", "用户填了 $raw")   // ← 这里会提示
 
 表外的组合没有测过。
 
-**国内网络的两个调整（都是踩过坑才加的）**：
+**国内网络统一走腾讯云镜像**（依赖仓库和 Gradle 下载地址都用它，不混着来）：
 
-- **依赖仓库**：加了阿里云镜像优先——国内网络下 `repo.maven.apache.org` 可能出现 TLS 握手被中断，官方仓库保留兜底。
-- **Gradle 下载地址**：换成了腾讯云镜像。官方地址 `services.gradle.org` 会**跳转到 GitHub 下载**，
-  国内经常超时，**Android Studio 会因此同步失败**（报 `Could not install Gradle distribution`）。
-  镜像上的文件与官方完全一致（校验值相同，`distributionSha256Sum` 仍然生效）。
-  要换回官方：把 `distributionUrl` 里的 `mirrors.cloud.tencent.com/gradle` 改回 `services.gradle.org/distributions`。
+| 用途 | 换成 | 为什么 |
+|---|---|---|
+| **依赖仓库** | `mirrors.cloud.tencent.com/nexus/repository/maven-public/` | 官方 `repo.maven.apache.org` 国内可能出现 TLS 握手被中断 |
+| **Gradle 下载** | `mirrors.cloud.tencent.com/gradle/` | 官方 `services.gradle.org` 会**跳转到 GitHub 下载**，国内经常超时，**Android Studio 会因此同步失败**（报 `Could not install Gradle distribution`） |
+
+为什么统一用腾讯云：**只有它同时有这两样**（阿里云没有 Gradle 发行包，会 404）。
+镜像上的文件与官方完全一致（校验值相同，`distributionSha256Sum` 仍然生效），两处都保留了官方地址作为兜底。
+
+想换回官方：依赖仓库删掉那行 `maven(...)` 即可；Gradle 把 `distributionUrl` 里的
+`mirrors.cloud.tencent.com/gradle` 改回 `services.gradle.org/distributions`。
 
 ## 许可
 
