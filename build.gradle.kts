@@ -60,6 +60,28 @@ val bundleForCentral: TaskProvider<Zip> = run {
     }
 }
 
+// 签名用的密钥。它是全局配置，六个模块共用同一份，所以在这里读一次就够了。
+// 只从**本机**的配置里读（~/.gradle/gradle.properties，不进仓库）。
+//
+// 两种给法，挑一种：
+//   SIGNING_KEY_FILE=/Users/你/.gnupg/tlogger-secret.asc   ← 推荐，路径写全，省事
+//   SIGNING_KEY=<整份密钥压成一行>                          ← 要塞进属性文件，得把换行写成 \n
+val signingPassword = providers.gradleProperty("SIGNING_PASSWORD").orNull
+val signingKey: String? = providers.gradleProperty("SIGNING_KEY").orNull
+    ?: providers.gradleProperty("SIGNING_KEY_FILE").orNull?.let { path ->
+        val keyFile = rootProject.layout.projectDirectory.file(path)
+        if (!keyFile.asFile.exists()) {
+            throw GradleException(
+                "SIGNING_KEY_FILE 指的密钥文件不存在：${keyFile.asFile.absolutePath}\n" +
+                    "检查 ~/.gradle/gradle.properties 里那一行的路径写对没有（建议写全路径，从 /Users 开始）。",
+            )
+        }
+        // 用 providers.fileContents 而不是直接读文件：这样 Gradle 知道它是配置的输入，
+        // 换了密钥会自动重算。直接 File.readText 的话 Gradle 看不见，配置缓存里可能
+        // 还留着旧密钥，换了密钥却发现签名没变，很难查。
+        providers.fileContents(keyFile).asText.orNull
+    }
+
 // 发布配置只写这一处：坐标、版本、POM 信息，模块不用各抄一遍
 subprojects {
     plugins.withId("maven-publish") {
@@ -105,17 +127,7 @@ subprojects {
             }
         }
 
-        // 中央仓库强制要求每个包都有签名。密钥只从**本机**的配置里读
-        // （~/.gradle/gradle.properties，不进仓库），没配就整段跳过——
-        // 平时构建、发本机仓库完全不受影响。
-        //
-        // 两种给法，随便挑一种：
-        //   SIGNING_KEY_FILE=/Users/你/.gnupg/tlogger-secret.asc   ← 推荐，省事
-        //   SIGNING_KEY=<整份密钥压成一行>                          ← 要塞进属性文件，得把换行写成 \n
-        val signingPassword = providers.gradleProperty("SIGNING_PASSWORD").orNull
-        val signingKey = providers.gradleProperty("SIGNING_KEY").orNull
-            ?: providers.gradleProperty("SIGNING_KEY_FILE").orNull?.let { file(it).readText() }
-
+        // 配了密钥就打开签名。没配就整段跳过——平时构建、发本机仓库完全不受影响。
         if (signingKey != null && signingPassword != null) {
             apply(plugin = "signing")
             configure<SigningExtension> {
