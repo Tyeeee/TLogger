@@ -51,14 +51,27 @@ class LogPiiDetectorTest {
         class Logger {
             fun d(message: () -> String) {}
             fun i(message: () -> String) {}
+            fun w(message: () -> String) {}
+        }
+        object TLogger {
+            fun logger(source: String): Logger = Logger()
         }
         """,
     ).to("src/com/tlogger/core/Logger.kt")
 
+    private val telephonyStub = kotlin(
+        """
+        package android.telephony
+        class TelephonyManager {
+            fun getDeviceId(): String = ""
+        }
+        """,
+    ).to("src/android/telephony/TelephonyManager.kt")
+
     private fun check(source: String) =
         lint()
-            .issues(LogPiiDetector.ISSUE)
-            .files(editTextStub, logStub, locationStub, loggerStub, kotlin(source).to("src/test/Subject.kt"))
+            .issues(LogPiiDetector.ISSUE, LogPiiDetector.NAME_ISSUE)
+            .files(editTextStub, logStub, locationStub, loggerStub, telephonyStub, kotlin(source).to("src/test/Subject.kt"))
             .allowMissingSdk()
             .run()
 
@@ -210,6 +223,188 @@ class LogPiiDetectorTest {
                 @Suppress("TLoggerPiiInLog")
                 fun submit(edit: EditText) {
                     Log.d("Order", edit.text.toString())
+                }
+            }
+            """,
+        ).expectClean()
+    }
+
+    // ------------------------------------------------- 实际工程里最常见的七种写法
+    // 下面是"别人的代码里真的会这么写"的形状。原来一条都不报（实测反馈），
+    // 原因是检查只认"从敏感 API 直接流出来的值"，而这七种靠的是变量名或字面量。
+
+    @Test
+    fun namedParameterInLazyLogIsReported() {
+        // 入参叫 phone，直接拼进惰性日志——没有任何"敏感 API"，原来完全不报
+        check(
+            """
+            package test
+            import com.tlogger.core.TLogger
+            class Subject {
+                fun submit(phone: String) {
+                    val log = TLogger.logger("User")
+                    log.d { "手机号 ${'$'}phone 提交成功" }
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun namedLocalInLazyLogIsReported() {
+        check(
+            """
+            package test
+            import com.tlogger.core.TLogger
+            class Subject {
+                fun track(userId: String) {
+                    val id = userId
+                    val log = TLogger.logger("User")
+                    log.d { id }
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun literalPhoneNumberInMessageIsReported() {
+        // 直接把号码写在消息里——常量，任何污点分析都跟不到
+        check(
+            """
+            package test
+            import android.util.Log
+            class Subject {
+                fun demo() {
+                    Log.i("User", "手机号 13800138000")
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun deviceIdParameterIsReported() {
+        check(
+            """
+            package test
+            import android.util.Log
+            class Subject {
+                fun upload(deviceId: String) {
+                    Log.d("Device", "设备号 ${'$'}deviceId")
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun loggerHeldInLocalVariableIsReported() {
+        check(
+            """
+            package test
+            import com.tlogger.core.TLogger
+            class Subject {
+                fun track(userId: String) {
+                    val log = TLogger.logger("Order")
+                    log.d { userId }
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun lazyLogOfLiteralPhoneIsReported() {
+        check(
+            """
+            package test
+            import com.tlogger.core.TLogger
+            class Subject {
+                fun demo() {
+                    val log = TLogger.logger("User")
+                    log.d { "手机号 13800138000" }
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun tokenIsReported() {
+        check(
+            """
+            package test
+            import android.util.Log
+            class Subject {
+                fun login(token: String) {
+                    Log.d("Auth", "token = ${'$'}token")
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    // ------------------------------------------------- 放宽之后也不能乱报
+
+    @Test
+    fun jwtLiteralInMessageIsReported() {
+        check(
+            """
+            package test
+            import android.util.Log
+            class Subject {
+                fun demo() {
+                    Log.i("Auth", "凭证 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghij 已过期")
+                }
+            }
+            """,
+        ).expectWarningCount(1)
+    }
+
+    @Test
+    fun maskedPhoneNumberIsClean() {
+        // 已经打过码的号码不该再报一次——否则用打码的人反而被拦住
+        check(
+            """
+            package test
+            import com.tlogger.core.TLogger
+            class Subject {
+                fun demo() {
+                    val log = TLogger.logger("User")
+                    log.d { "手机号 138****5678 已注册" }
+                }
+            }
+            """,
+        ).expectClean()
+    }
+
+    @Test
+    fun orderIdIsClean() {
+        // 业务单号只是普通标识，不算隐私——名字里带 id 不等于就是隐私
+        check(
+            """
+            package test
+            import android.util.Log
+            class Subject {
+                fun done(orderId: String) {
+                    Log.d("Order", "订单 ${'$'}orderId 创建成功")
+                }
+            }
+            """,
+        ).expectClean()
+    }
+
+    @Test
+    fun shortNumberInMessageIsClean() {
+        // 短数字不是手机号，别把普通计数当成号码
+        check(
+            """
+            package test
+            import android.util.Log
+            class Subject {
+                fun done(count: Int) {
+                    Log.i("Cart", "共 ${'$'}count 件，金额 199")
                 }
             }
             """,

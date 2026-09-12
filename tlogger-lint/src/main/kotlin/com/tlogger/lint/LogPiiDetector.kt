@@ -17,6 +17,7 @@ import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UBinaryExpression
 import org.jetbrains.uast.UElement
 import org.jetbrains.uast.UExpression
+import org.jetbrains.uast.ULiteralExpression
 import org.jetbrains.uast.UMethod
 import org.jetbrains.uast.UQualifiedReferenceExpression
 import org.jetbrains.uast.UReferenceExpression
@@ -74,7 +75,12 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
 
     private fun checkMethod(context: JavaContext, method: UMethod) {
         val tainted = collectTaintedNames(context, method)
-        if (tainted.isEmpty() && !containsSensitiveAccess(context, method)) return
+        val suspects = collectSuspectNames(method)
+        if (tainted.isEmpty() && suspects.isEmpty() &&
+            !containsSensitiveAccess(context, method) && !containsPiiLiteral(method)
+        ) {
+            return
+        }
 
         method.accept(
             object : AbstractUastVisitor() {
@@ -83,26 +89,41 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
                     val owner = ownerName(resolved.containingClass?.qualifiedName)
                     if (owner == null || !isLogCall(owner, resolved.name)) return false
 
-                    val guilty = node.valueArguments.firstOrNull { isTainted(context, it, tainted) }
-                        ?: return false
+                    // 一、确证的：值来自敏感 API，或者消息里直接写着明文敏感信息
+                    val certain = node.valueArguments.firstOrNull { arg ->
+                        isTainted(context, arg, tainted) || piiLiteralIn(arg) != null
+                    }
+                    if (certain != null) {
+                        report(context, node, certain, ISSUE)
+                        return false
+                    }
 
-                    report(context, node, guilty)
+                    // 二、启发式的：值来自"名字就像隐私"的变量。单独一条规则，可以只关这一条。
+                    val named = node.valueArguments.firstOrNull { referencesAny(it, suspects) }
+                    if (named != null) report(context, node, named, NAME_ISSUE)
                     return false
                 }
             },
         )
     }
 
-    private fun report(context: JavaContext, node: UElement, guilty: UElement) {
+    private fun report(context: JavaContext, node: UElement, guilty: UElement, issue: Issue) {
+        val advice = if (issue === NAME_ISSUE) {
+            "这条是**按变量名**判断的（启发式）。没风险的话加 `@Suppress(\"TLoggerPiiNameInLog\")` 豁免；\n" +
+                "整条规则嫌吵，可以在 build.gradle.kts 的 `lint { disable += \"TLoggerPiiNameInLog\" }` 里关掉，\n" +
+                "另一条（确证的）不受影响。"
+        } else {
+            "确认没问题可以加 `@Suppress(\"TLoggerPiiInLog\")` 逐处豁免。"
+        }
         context.report(
-            ISSUE,
+            issue,
             node,
             context.getLocation(guilty),
             "这段内容可能包含用户隐私，不该原样写进日志。\n" +
                 "日志会被导出、上传、截图，里面的手机号/身份证/位置等于明文。\n" +
                 "建议：① 别把它的原值写进日志；② 需要排查时用打码换成代号" +
                 "（RedactingSink + PiiRedactor，同一个值每次同一个代号，能对上号又不暴露）。\n" +
-                "确认没问题可以加 `@Suppress(\"TLoggerPiiInLog\")` 逐处豁免。",
+                advice,
         )
     }
 
@@ -158,6 +179,85 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
         return tainted
     }
 
+    /**
+     * 名字看着就是隐私的变量（`phone`、`userId`、`deviceId`、`token` …），
+     * 以及从它们转手出来的变量（`val id = userId` 里的 `id` 也算）。
+     *
+     * 这是**启发式**：叫 `phone` 的变量不一定真是手机号。所以它单独算一条规则（[NAME_ISSUE]），
+     * 跟"确证"的那条分开——嫌吵可以只关这一条，另一条不受影响。
+     *
+     * 为什么必须加这一层：真正工程里写的是 `log.d { "手机号 $phone 提交成功" }`，
+     * 这个 `phone` 只是个方法入参，没有任何"敏感 API"可跟——只做污点分析的话一条都不会报（实测反馈过）。
+     */
+    private fun collectSuspectNames(method: UMethod): Set<String> {
+        val declarations = mutableListOf<Pair<String, UExpression?>>()
+        val assignments = mutableListOf<Pair<String, UExpression>>()
+
+        method.accept(
+            object : AbstractUastVisitor() {
+                override fun visitVariable(node: UVariable): Boolean {
+                    val name = node.name
+                    if (name != null) declarations.add(name to node.uastInitializer)
+                    return false
+                }
+
+                override fun visitBinaryExpression(node: UBinaryExpression): Boolean {
+                    if (node.operator == UastBinaryOperator.ASSIGN) {
+                        val left = node.leftOperand
+                        if (left is USimpleNameReferenceExpression) {
+                            assignments.add(left.identifier to node.rightOperand)
+                        }
+                    }
+                    return false
+                }
+            },
+        )
+
+        // 起点：名字本身就长得像隐私的（入参也算——入参没有初始值，靠的就是名字）
+        val suspects = mutableSetOf<String>()
+        declarations.mapNotNullTo(suspects) { (name, _) -> name.takeIf { looksLikePiiName(it) } }
+        assignments.mapNotNullTo(suspects) { (name, _) -> name.takeIf { looksLikePiiName(it) } }
+
+        // 再往下跟：val id = userId → id 也算
+        var changed = true
+        while (changed) {
+            changed = false
+            for ((name, initializer) in declarations) {
+                if (name in suspects || initializer == null) continue
+                if (referencesAny(initializer, suspects)) {
+                    suspects.add(name)
+                    changed = true
+                }
+            }
+            for ((name, value) in assignments) {
+                if (name in suspects) continue
+                if (referencesAny(value, suspects)) {
+                    suspects.add(name)
+                    changed = true
+                }
+            }
+        }
+        return suspects
+    }
+
+    /** 这段内容里有没有直接写着的明文敏感信息（手机号 / 邮箱 / 身份证 / 银行卡）。 */
+    private fun piiLiteralIn(expression: UElement): String? {
+        var hit: String? = null
+        expression.accept(
+            object : AbstractUastVisitor() {
+                override fun visitLiteralExpression(node: ULiteralExpression): Boolean {
+                    if (hit != null) return true
+                    val text = node.value as? String ?: return false
+                    if (looksLikePiiLiteral(text)) hit = text
+                    return false
+                }
+            },
+        )
+        return hit
+    }
+
+    private fun containsPiiLiteral(method: UMethod): Boolean = piiLiteralIn(method) != null
+
     private fun containsSensitiveAccess(context: JavaContext, method: UMethod): Boolean {
         var found = false
         method.accept(sensitiveScanner(context) { found = true })
@@ -173,15 +273,19 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
         tainted: Set<String>,
     ): Boolean {
         if (isSensitiveExpression(context, expression)) return true
-        if (tainted.isEmpty()) return false
+        return referencesAny(expression, tainted)
+    }
 
+    /** 这个表达式里有没有用到 [names] 里的哪个名字。 */
+    private fun referencesAny(expression: UElement, names: Set<String>): Boolean {
+        if (names.isEmpty()) return false
         var found = false
         expression.accept(
             object : AbstractUastVisitor() {
                 override fun visitSimpleNameReferenceExpression(
                     node: USimpleNameReferenceExpression,
                 ): Boolean {
-                    if (node.identifier in tainted) found = true
+                    if (node.identifier in names) found = true
                     return found
                 }
             },
@@ -295,6 +399,14 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
                 "getDeviceId", "getImei", "getMeid", "getLine1Number",
                 "getSimSerialNumber", "getSubscriberId",
             ),
+            // 设备标识：Build.SERIAL、Wi-Fi 的 MAC/IP、广告标识
+            "android.os.Build" to setOf("getSerial", "serial"),
+            "android.net.wifi.WifiInfo" to setOf(
+                "getMacAddress", "getIpAddress", "macAddress", "ipAddress",
+            ),
+            "com.google.android.gms.ads.identifier.AdvertisingIdClient" to setOf(
+                "getAdvertisingIdInfo", "getId",
+            ),
             "android.provider.Settings.Secure" to setOf("getString"),
             "android.location.Location" to setOf(
                 "getLatitude", "getLongitude", "latitude", "longitude",
@@ -306,6 +418,99 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
                 "getAccounts", "getAccountsByType", "getAccountsByTypeAndFeatures",
             ),
         )
+
+        /**
+         * 名字看着就像隐私的词根。**只认明确的那几类**，不把 `id`、`name` 这种放进来——
+         * 单号里到处都是 id，放进来会制造大量误报。
+         *
+         * 名字带 phone 的变量不一定真是手机号，所以这条是启发式，单独一个 issue id。
+         */
+        private val PII_NAME_PATTERN = Regex(
+            "^(?:" +
+                "phone|mobile|telephone|tel|msisdn|" +
+                "idcard|idno|idnumber|" +
+                "bankcard|cardno|cardnumber|" +
+                "email|mail|" +
+                "imei|meid|imsi|androidid|deviceid|deviceserial|serial|macaddress|" +
+                "password|passwd|pwd|token|secret|apikey|" +
+                "userid|username|realname|nickname|" +
+                "address|latitude|longitude|location|ipaddress" +
+                ")\\w*$",
+            RegexOption.IGNORE_CASE,
+        )
+
+        // ---- 明文敏感信息的形状。只认"长得就很确定"的，宁可漏，不制造误报 ----
+
+        /** 手机号：11 位、1 开头、第二位 3-9。已打过码的（138****5678）不会命中。 */
+        private val PHONE_PATTERN = Regex("(?<!\\d)1[3-9]\\d{9}(?!\\d)")
+
+        private val EMAIL_PATTERN = Regex("[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+")
+
+        /** JWT：三段点分，第一段是 eyJ 开头的 base64（跟运行期打码用的是同一个特征）。 */
+        private val JWT_PATTERN = Regex("eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
+
+        /** 身份证：18 位。**还要过校验位**，否则 18 位的订单号会被误判。 */
+        private val ID_CARD_PATTERN = Regex("(?<!\\d)\\d{17}[\\dXx](?!\\d)")
+
+        /** 银行卡：16-19 位。**还要过 Luhn 校验**，并且附近得出现"卡/card/bank"这类词。 */
+        private val BANK_CARD_PATTERN = Regex("(?<!\\d)\\d{16,19}(?!\\d)")
+
+        private val ID_CARD_HINTS = listOf("身份证", "证件", "idcard", "id card", "identity")
+        private val BANK_CARD_HINTS = listOf("卡", "card", "bank")
+
+        private val ID_CARD_WEIGHTS = intArrayOf(7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
+        private const val ID_CARD_CHECKSUM = "10X98765432"
+
+        private fun looksLikePiiName(name: String): Boolean = PII_NAME_PATTERN.matches(name)
+
+        /** 这段文字里有没有明文敏感信息。 */
+        private fun looksLikePiiLiteral(text: String): Boolean {
+            if (PHONE_PATTERN.containsMatchIn(text)) return true
+            if (EMAIL_PATTERN.containsMatchIn(text)) return true
+            if (JWT_PATTERN.containsMatchIn(text)) return true
+            val lower = text.lowercase()
+            if (ID_CARD_HINTS.any { lower.contains(it) } &&
+                ID_CARD_PATTERN.findAll(text).any { isValidIdCard(it.value) }
+            ) {
+                return true
+            }
+            if (BANK_CARD_HINTS.any { lower.contains(it) } &&
+                BANK_CARD_PATTERN.findAll(text).any { isValidLuhn(it.value) }
+            ) {
+                return true
+            }
+            return false
+        }
+
+        /** 身份证校验位（GB 11643 的模 11-2）。过了它才认，能挡掉绝大多数"18 位数字"的误判。 */
+        private fun isValidIdCard(value: String): Boolean {
+            if (value.length != 18) return false
+            var sum = 0
+            for (i in 0 until 17) {
+                val digit = value[i] - '0'
+                if (digit !in 0..9) return false
+                sum += digit * ID_CARD_WEIGHTS[i]
+            }
+            return ID_CARD_CHECKSUM[sum % 11].equals(value[17], ignoreCase = true)
+        }
+
+        /** 银行卡常用的 Luhn 校验。随机的 18 位单号大约只有一成能过，能挡掉大部分误报。 */
+        private fun isValidLuhn(value: String): Boolean {
+            if (value.length !in 16..19) return false
+            var sum = 0
+            var doubled = false
+            for (i in value.length - 1 downTo 0) {
+                var digit = value[i] - '0'
+                if (digit !in 0..9) return false
+                if (doubled) {
+                    digit *= 2
+                    if (digit > 9) digit -= 9
+                }
+                sum += digit
+                doubled = !doubled
+            }
+            return sum % 10 == 0
+        }
 
         val ISSUE: Issue = Issue.create(
             id = "TLoggerPiiInLog",
@@ -321,6 +526,30 @@ class LogPiiDetector : Detector(), SourceCodeScanner {
             """,
             category = Category.CORRECTNESS,
             priority = 6,
+            severity = Severity.WARNING,
+            implementation = Implementation(
+                LogPiiDetector::class.java,
+                Scope.JAVA_FILE_SCOPE,
+            ),
+        )
+
+        /**
+         * 名字像隐私的变量被写进日志（启发式）。
+         *
+         * 跟 [ISSUE] 分开是刻意的：这条会多一点噪音，但能盖住"入参叫 phone""局部变量叫 userId"
+         * 这类真实写法。嫌吵可以在 build.gradle.kts 里单独关掉它：
+         * `lint { disable += "TLoggerPiiNameInLog" }`——确证的那条不受影响。
+         */
+        val NAME_ISSUE: Issue = Issue.create(
+            id = "TLoggerPiiNameInLog",
+            briefDescription = "名字像隐私的变量被写进日志",
+            explanation = """
+                变量名是 phone / userId / deviceId / token / email 这类，说明它很可能就是隐私数据。把它原样写进日志，等于给日志里留了明文。
+
+                这条是启发式的（只看名字）：名字像不代表一定是。觉得没问题就加 @Suppress("TLoggerPiiNameInLog")，或者干脆在 build.gradle.kts 里关掉整条规则。
+            """,
+            category = Category.CORRECTNESS,
+            priority = 4,
             severity = Severity.WARNING,
             implementation = Implementation(
                 LogPiiDetector::class.java,

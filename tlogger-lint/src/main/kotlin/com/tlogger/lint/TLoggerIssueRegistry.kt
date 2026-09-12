@@ -16,7 +16,7 @@ import com.android.tools.lint.detector.api.Issue
  */
 class TLoggerIssueRegistry : IssueRegistry() {
 
-    override val issues: List<Issue> get() = listOf(LogPiiDetector.ISSUE)
+    override val issues: List<Issue> get() = listOf(LogPiiDetector.ISSUE, LogPiiDetector.NAME_ISSUE)
 
     override val api: Int get() = CURRENT_API
 
