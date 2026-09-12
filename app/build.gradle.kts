@@ -3,13 +3,13 @@ plugins {
 }
 
 android {
-    namespace = "com.tlogger.sample"
+    namespace = "com.tlogger.app"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.tlogger.sample"
+        applicationId = "com.tlogger.app"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

@@ -93,8 +93,8 @@ ringCrash      出事前发生了什么       endToEnd       四个能力一起�
 
 ```
 ./gradlew :app:installDebug
-adb shell am start -n com.tlogger.sample/.MainActivity                     # 手动点按钮
-adb shell am start -n com.tlogger.sample/.MainActivity --es scenario stress # 直接跑某个场景
+adb shell am start -n com.tlogger.app/.MainActivity                     # 手动点按钮
+adb shell am start -n com.tlogger.app/.MainActivity --es scenario stress # 直接跑某个场景
 adb logcat -s TLoggerSample                                                # 看场景自己报的结果
 ```
 
@@ -165,7 +165,16 @@ val log = logging.logger("Net")
 | `tlogger-lint` | **写代码时的隐私检查**（不进安装包） | 检查"把用户输入/设备号/位置/账号写进日志" |
 | `app` | 示例应用 | 20 个可点的测试场景 |
 
-**模块名用连字符**（`tlogger-core`），**包名用点号**（`com.tlogger.core`）——模块名和包名是两回事，不要混在一起。
+**命名规则（一条规则管到底，没有例外）**：
+
+| 用在哪 | 怎么起 | 例子 |
+|---|---|---|
+| 模块目录 / Gradle 模块名 | 连字符 | `tlogger-core`、`tlogger-android` |
+| Android 命名空间 | `com.tlogger.<模块目录名>` | `com.tlogger.core`、`com.tlogger.android` |
+| Kotlin 包名 | 同上 | `com.tlogger.core`、`com.tlogger.android` |
+| 示例应用 | `com.tlogger.app` | 模块目录就叫 `app` |
+
+一句话：**命名空间和包名都等于 `com.tlogger.` 加上模块目录名**，不留任何自创后缀。
 
 **依赖方向是单向的**：`tlogger-android` → `tlogger-core`。反过来核心模块**不认识**安卓。
 

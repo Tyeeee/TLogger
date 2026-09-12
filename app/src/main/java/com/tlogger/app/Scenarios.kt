@@ -1,4 +1,4 @@
-package com.tlogger.sample
+package com.tlogger.app
 
 import android.content.Context
 import android.content.Intent

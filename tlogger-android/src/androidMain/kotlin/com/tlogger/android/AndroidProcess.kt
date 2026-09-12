@@ -22,7 +22,7 @@ import java.io.File
 public object AndroidProcessTags {
 
     /**
-     * 当前进程的完整名字。主进程就是包名，副进程形如 `com.example:remote`。
+     * 当前进程的完整名字。主进程就是包名，副进程形如 `com.tlogger.app:remote`。
      *
      * 优先用系统接口；老系统上退回读 `/proc/self/cmdline`。
      */
@@ -41,7 +41,7 @@ public object AndroidProcessTags {
     /**
      * 应该加到来源名后面的后缀：**主进程返回空串**，副进程返回 `@进程名后缀`。
      *
-     * 例如副进程 `com.example:remote` 会返回 `@remote`。
+     * 例如副进程 `com.tlogger.app:remote` 会返回 `@remote`。
      */
     public fun suffixFor(context: Context): String {
         val full = processName(context)

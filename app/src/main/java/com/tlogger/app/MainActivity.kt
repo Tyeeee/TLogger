@@ -1,4 +1,4 @@
-package com.tlogger.sample
+package com.tlogger.app
 
 import android.app.Activity
 import android.os.Bundle
@@ -15,7 +15,7 @@ import com.tlogger.android.AndroidLogging
  * 示例应用：每个按钮是一个"测试节点"，进去就自动跑一遍并把结果写出来。
  *
  * 也可以用命令直接进某个页面（方便自动核对）：
- * `adb shell am start -n com.tlogger.sample/.MainActivity --es scenario network`
+ * `adb shell am start -n com.tlogger.app/.MainActivity --es scenario network`
  */
 class MainActivity : Activity() {
 
