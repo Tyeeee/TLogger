@@ -16,6 +16,13 @@ import kotlin.concurrent.Volatile
  * 前者是你自己决定装哪个，后者是两个库抢同一个开关。
  *
  * 未安装时所有日志调用都是空操作，**绝不崩**。
+ *
+ * ## 谁可以调 [install]
+ *
+ * **只有 App / 进程入口**（`Application.onCreate`、Startup 初始化之类）。库代码不要自己装——
+ * 两个库都去装全局开关，就是上面说的那个坑。库代码要用日志，两条路：
+ * - 用调用方传进来的 [Logging] 实例（最干净，测试也好写）；
+ * - 或者直接 [TLogger.logger]（没装就什么都不做，不报错也不崩）。
  */
 public object TLogger {
 

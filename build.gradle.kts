@@ -146,5 +146,25 @@ subprojects {
         // 结果是"目录删不掉"（实测踩到过）。所以按名字把每一个都挂上。
         tasks.matching { it.name.endsWith("PublicationToCentralStagingRepository") }
             .configureEach { dependsOn(cleanCentralStaging) }
+
+        // KMP 的根发布（那份"说明书"）源码包默认是**空的**，里面只有 MANIFEST——
+        // 实测：别人在 IDE 里点"下载源码"就拿到一个空包。真源码全在 -android 那份里
+        // （commonMain + androidMain 都在），这里给根发布补上 commonMain，
+        // 让"跨平台共用那部分"在哪都能看到。
+        plugins.withId("org.jetbrains.kotlin.multiplatform") {
+            val kmp = extensions.getByType(
+                org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java,
+            )
+            // 取成 List<File> 而不是 SourceDirectorySet 对象——后者配置缓存存不下（实测报过错）
+            val commonMainDirs =
+                kmp.sourceSets.getByName("commonMain").kotlin.srcDirs.toList()
+            // 注意类型是 org.gradle.jvm.tasks.Jar：Gradle 9 把 Jar 挪了包，
+            // 写成老的那个（org.gradle.api.tasks.bundling.Jar）会报"不是它的子类"（实测踩到）
+            // 另外名字是**小写开头的 sourcesJar**，用 endsWith("SourcesJar") 会漏掉它
+            // （androidSourcesJar / metadataSourcesJar 才是大写 S），实测栽在这个大小写上。
+            tasks.withType<org.gradle.jvm.tasks.Jar>()
+                .matching { it.name.equals("sourcesJar", ignoreCase = true) }
+                .configureEach { from(commonMainDirs) }
+        }
     }
 }

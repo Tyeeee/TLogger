@@ -31,8 +31,15 @@ public class LogRecord(
  * 日志的出口。系统日志、文件、环形缓冲、测试用的假出口，都实现这个接口。
  *
  * 约束：**实现里不要把异常抛出去**。写出错属于内部问题，不该影响业务线程。
+ *
+ * 它只有一个方法，所以是 `fun interface`——临时接一个出口可以直接写 lambda，
+ * 不用为一行代码建个类：
+ * ```
+ * val sink = LogSink { record -> println(record.message) }
+ * ```
+ * 要同时送好几个出口，用 [CompositeSink]。
  */
-public interface LogSink {
+public fun interface LogSink {
     /** 写出一条记录。 */
     public fun write(record: LogRecord)
 }
