@@ -175,28 +175,24 @@ val log = logging.logger("Net")
 而且**不会**把 iOS、桌面那几份的错误版本拉进来。这个机制是 Gradle 原生的，
 将来真加了 iOS 目标，同一个坐标也照样能用，不用改引用方式。
 
-### 别人的项目里到底能不能用，我验证过了
+### 别人的项目里到底能不能用
 
-仓库里带了一个 **`consumer-check/`**：那是一个跟 TLogger 源码毫无关系的独立安卓工程，
-依赖里没有一行 `project(":...")`，全是从仓库坐标拉的。它进去就自己跑五项，每项打一行结果：
+这件事**实际验证过**，不是靠单元测试自说自话：当时建了一个跟 TLogger 源码毫无关系的独立安卓工程
+（依赖里没有一行 `project(":...")`，全从仓库坐标拉），装到模拟器上真跑了一遍。
 
-```
-./gradlew publishToMavenLocal          # 先发到本机
-./gradlew -p consumer-check :app:assembleDebug
-adb install -r consumer-check/app/build/outputs/apk/debug/app-debug.apk
-adb logcat -d -s CONSUMER:I
-```
+验证做完后，那个临时工程已经删掉了。下面是当时的实测结果，留着供你判断：
 
-实测结果（真机跑的）：
-
-| 结果行 | 说明 |
+| 当时的结果 | 说明 |
 |---|---|
-| `trace tagged=3 expect=3` | 一次 `withTrace` 标记，正好 3 条日志带上链路号 |
-| `drain leakedRawPii=false masked=true` | 缓冲区里存的是打过码的内容，原号码没漏 |
-| `stress sent=3000 written=3009` | 库自己记账一条不差（3009 = 前面 9 条 + 这 3000 条） |
+| 链路号正好 3 条 | 一次 `withTrace` 标记，不多不少 |
+| `leakedRawPii=false masked=true` | 缓冲区里存的是打过码的内容，原号码没漏 |
+| 3000 条记账 3009 条 | 库自己记账一条不差（3009 = 前面 9 条 + 这 3000 条） |
 
 顺带验了一件事：`lintChecks(...)` 用**仓库坐标**也能吃进来，
 lint 报告里出现了我们自己的检查项 `TLoggerPiiInLog`，并且抓到了故意留的那处违规。
+
+以后想重新验一遍的话，照上面「现在能怎么发」那两步走，然后随便建一个新工程引坐标、
+装到手机上跑就是了。
 
 ### 发到中央仓库还差什么
 
